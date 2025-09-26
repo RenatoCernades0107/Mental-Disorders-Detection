@@ -16,7 +16,7 @@ num_epochs = 100
 learning_rate = 0.001
 
 # Create dataset
-dataset = MDDataset(file_path, target_column, normalize=True, pca_components=5, select_k_best=10)
+dataset = MDDataset(file_path, target_column, normalize=None, pca_components=3)
 dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 # Initialize SVM model

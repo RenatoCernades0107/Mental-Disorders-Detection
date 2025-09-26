@@ -1,4 +1,5 @@
 # Load dataset from CSV file and create a class in pytorch
+import joblib
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
@@ -7,12 +8,11 @@ from sklearn.preprocessing import StandardScaler
 import numpy as np
 from sklearn.utils import shuffle
 from sklearn.decomposition import PCA
-from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.preprocessing import LabelEncoder
 
 class MDDataset(Dataset):
     def __init__(self, file_path: str, target_column: str, test_size: float = 0.2, random_state: int = 42, 
-                 normalize: bool = False, pca_components: int = None, select_k_best: int = None):
+                 normalize: bool = False, pca_components: int = None):
         """
         Args:
             file_path (string): Path to the csv file.
@@ -21,8 +21,10 @@ class MDDataset(Dataset):
             random_state (int): Random seed for reproducibility.
             normalize (bool): Whether to normalize the features.
             pca_components (int or None): Number of PCA components to keep. If None, PCA is not applied.
-            select_k_best (int or None): Number of top features to select using SelectKBest. If None, feature selection is not applied.
         """
+        self.normalize = normalize
+        self.pca_components = pca_components
+
         # Load data
         self.data = pd.read_csv(file_path)
 
@@ -51,21 +53,16 @@ class MDDataset(Dataset):
         
         # Normalize features if required
         if normalize:
-            scaler = StandardScaler()
-            self.X_train = scaler.fit_transform(self.X_train)
-            self.X_test = scaler.transform(self.X_test)
-        
+            self.scaler = StandardScaler()
+            self.X_train = self.scaler.fit_transform(self.X_train)
+            self.X_test = self.scaler.transform(self.X_test)
+
         # Apply PCA if required
         if pca_components is not None:
-            pca = PCA(n_components=pca_components)
-            self.X_train = pca.fit_transform(self.X_train)
-            self.X_test = pca.transform(self.X_test)
-        
-        # Apply SelectKBest if required
-        if select_k_best is not None:
-            selector = SelectKBest(score_func=f_classif, k=select_k_best)
-            self.X_train = selector.fit_transform(self.X_train, self.y_train)
-            self.X_test = selector.transform(self.X_test)
+            self.pca = PCA(n_components=pca_components)
+            self.X_train = self.pca.fit_transform(self.X_train)
+            self.X_test = self.pca.transform(self.X_test)
+            
         
         # Convert to torch tensors
         self.X_train = torch.tensor(self.X_train, dtype=torch.float32)
@@ -84,3 +81,24 @@ class MDDataset(Dataset):
     
     def get_labels(self):
         return self.labels
+    
+    def process_point(self, point) -> torch.Tensor:
+        """
+        Process a single data point (1D numpy array) in the same way as the training data.
+        Args:
+            point: single data point.
+        Returns:
+            torch.Tensor: Processed data point as a tensor.
+        """
+        point = pd.DataFrame([point])
+        categorical_cols = point.select_dtypes(include=['object', 'category']).columns.tolist()
+        point = pd.get_dummies(point, columns=categorical_cols, drop_first=True)
+        point = point.reindex(columns=self.data.drop(columns=[self.data.columns[-1]]).columns, fill_value=0)
+        
+        if self.normalize:
+            point = self.scaler.transform(point)
+
+        if self.pca_components is not None:
+            point = self.pca.transform(point)
+
+        return torch.tensor(point, dtype=torch.float32)
