@@ -8,6 +8,7 @@ import numpy as np
 from sklearn.utils import shuffle
 from sklearn.decomposition import PCA
 from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.preprocessing import LabelEncoder
 
 class MDDataset(Dataset):
     def __init__(self, file_path: str, target_column: str, test_size: float = 0.2, random_state: int = 42, 
@@ -24,13 +25,25 @@ class MDDataset(Dataset):
         """
         # Load data
         self.data = pd.read_csv(file_path)
+
+        # Get predict values
+        self.labels = self.data[target_column].unique().tolist()
+
+        # One hot encode categorical features if any expect target column
+        categorical_cols = self.data.select_dtypes(include=['object', 'category']).columns.tolist()
+        categorical_cols.remove(target_column)
+        self.data = pd.get_dummies(self.data, columns=categorical_cols, drop_first=True)
         
+        # Remove na values
+        self.data = self.data.dropna()
+
         # Shuffle data
         self.data = shuffle(self.data, random_state=random_state).reset_index(drop=True)
         
         # Split features and target
         self.X = self.data.drop(columns=[target_column]).values
         self.y = self.data[target_column].values
+        self.y = LabelEncoder().fit_transform(self.y)
         
         # Split into train and test sets
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
@@ -65,3 +78,9 @@ class MDDataset(Dataset):
     
     def __getitem__(self, idx):
         return self.X_train[idx], self.y_train[idx]
+    
+    def get_test_data(self):
+        return self.X_test, self.y_test
+    
+    def get_labels(self):
+        return self.labels
